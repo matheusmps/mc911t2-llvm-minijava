@@ -10,5 +10,10 @@ class m109
 class c
 {
 	int p;
+	Complex c;
 	public int i(int p){return 0;}
+}
+
+class complex{
+	int x;
 }

@@ -35,11 +35,73 @@ como guia no desenvolvimento deste projeto.
 ****************************************************/
 package llvm;
 
-import semant.Env;
-import syntaxtree.*;
-import llvmast.*;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 
-import java.util.*;
+import com.sun.org.apache.xalan.internal.xsltc.util.IntegerArray;
+
+import llvmast.LlvmAlloca;
+import llvmast.LlvmArray;
+import llvmast.LlvmCall;
+import llvmast.LlvmCloseDefinition;
+import llvmast.LlvmConstantDeclaration;
+import llvmast.LlvmDefine;
+import llvmast.LlvmExternalDeclaration;
+import llvmast.LlvmGetElementPointer;
+import llvmast.LlvmInstruction;
+import llvmast.LlvmIntegerLiteral;
+import llvmast.LlvmLabel;
+import llvmast.LlvmLabelValue;
+import llvmast.LlvmLoad;
+import llvmast.LlvmNamedValue;
+import llvmast.LlvmPlus;
+import llvmast.LlvmPointer;
+import llvmast.LlvmPrimitiveType;
+import llvmast.LlvmRegister;
+import llvmast.LlvmRet;
+import llvmast.LlvmStore;
+import llvmast.LlvmStructure;
+import llvmast.LlvmType;
+import llvmast.LlvmValue;
+import semant.Env;
+import syntaxtree.And;
+import syntaxtree.ArrayAssign;
+import syntaxtree.ArrayLength;
+import syntaxtree.ArrayLookup;
+import syntaxtree.Assign;
+import syntaxtree.Block;
+import syntaxtree.BooleanType;
+import syntaxtree.Call;
+import syntaxtree.ClassDecl;
+import syntaxtree.ClassDeclExtends;
+import syntaxtree.ClassDeclSimple;
+import syntaxtree.Equal;
+import syntaxtree.False;
+import syntaxtree.Formal;
+import syntaxtree.Identifier;
+import syntaxtree.IdentifierExp;
+import syntaxtree.IdentifierType;
+import syntaxtree.If;
+import syntaxtree.IntArrayType;
+import syntaxtree.IntegerLiteral;
+import syntaxtree.IntegerType;
+import syntaxtree.LessThan;
+import syntaxtree.MainClass;
+import syntaxtree.MethodDecl;
+import syntaxtree.Minus;
+import syntaxtree.NewArray;
+import syntaxtree.NewObject;
+import syntaxtree.Not;
+import syntaxtree.Plus;
+import syntaxtree.Print;
+import syntaxtree.Program;
+import syntaxtree.This;
+import syntaxtree.Times;
+import syntaxtree.True;
+import syntaxtree.VarDecl;
+import syntaxtree.VisitorAdapter;
+import syntaxtree.While;
 
 public class Codegen extends VisitorAdapter{
 	private List<LlvmInstruction> assembler;
@@ -86,6 +148,8 @@ public class Codegen extends VisitorAdapter{
 	}
 
 	public LlvmValue visit(Program n){
+		System.out.println("ENTER NODE - Program");
+
 		n.mainClass.accept(this);
 
 		for (util.List<ClassDecl> c = n.classList; c != null; c = c.tail)
@@ -95,6 +159,7 @@ public class Codegen extends VisitorAdapter{
 	}
 
 	public LlvmValue visit(MainClass n){
+		System.out.println("ENTER NODE - Main Class");
 		
 		// definicao do main 
 		assembler.add(new LlvmDefine("@main", LlvmPrimitiveType.I32, new LinkedList<LlvmValue>()));
@@ -116,6 +181,8 @@ public class Codegen extends VisitorAdapter{
 	}
 	
 	public LlvmValue visit(Plus n){
+		System.out.println("ENTER NODE - Plus");
+
 		LlvmValue v1 = n.lhs.accept(this);
 		LlvmValue v2 = n.rhs.accept(this);
 		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
@@ -124,6 +191,7 @@ public class Codegen extends VisitorAdapter{
 	}
 	
 	public LlvmValue visit(Print n){
+		System.out.println("ENTER NODE - Print");
 
 		LlvmValue v =  n.exp.accept(this);
 
@@ -155,40 +223,184 @@ public class Codegen extends VisitorAdapter{
 	}
 	
 	public LlvmValue visit(IntegerLiteral n){
+		System.out.println("ENTER NODE - Integer Literal");
 		return new LlvmIntegerLiteral(n.value);
 	};
+
+	// Todos os visit's que devem ser implementados
+	public LlvmValue visit(ClassDeclSimple n){
+		System.out.println("ENTER NODE - Class Declaration Simple");
+		
+		List<LlvmType> typeList = new LinkedList<LlvmType>();
+		
+		util.List<VarDecl> vars = n.varList;
+		if(vars.head != null){
+			typeList.add(checkType(vars.head));
+			while(vars.tail != null){
+				vars = vars.tail;
+				typeList.add(checkType(vars.head));
+			}
+		}
+		
+		LlvmStructure newClass = new LlvmStructure(typeList);
+		
+		return null;
+	}
 	
-	// Todos os visit's que devem ser implementados	
-	public LlvmValue visit(ClassDeclSimple n){return null;}
-	public LlvmValue visit(ClassDeclExtends n){return null;}
-	public LlvmValue visit(VarDecl n){return null;}
-	public LlvmValue visit(MethodDecl n){return null;}
-	public LlvmValue visit(Formal n){return null;}
-	public LlvmValue visit(IntArrayType n){return null;}
-	public LlvmValue visit(BooleanType n){return null;}
-	public LlvmValue visit(IntegerType n){return null;}
-	public LlvmValue visit(IdentifierType n){return null;}
-	public LlvmValue visit(Block n){return null;}
-	public LlvmValue visit(If n){return null;}
-	public LlvmValue visit(While n){return null;}
-	public LlvmValue visit(Assign n){return null;}
-	public LlvmValue visit(ArrayAssign n){return null;}
-	public LlvmValue visit(And n){return null;}
-	public LlvmValue visit(LessThan n){return null;}
-	public LlvmValue visit(Equal n){return null;}
-	public LlvmValue visit(Minus n){return null;}
-	public LlvmValue visit(Times n){return null;}
-	public LlvmValue visit(ArrayLookup n){return null;}
-	public LlvmValue visit(ArrayLength n){return null;}
-	public LlvmValue visit(Call n){return null;}
-	public LlvmValue visit(True n){return null;}
-	public LlvmValue visit(False n){return null;}
-	public LlvmValue visit(IdentifierExp n){return null;}
-	public LlvmValue visit(This n){return null;}
-	public LlvmValue visit(NewArray n){return null;}
-	public LlvmValue visit(NewObject n){return null;}
-	public LlvmValue visit(Not n){return null;}
-	public LlvmValue visit(Identifier n){return null;}
+	public LlvmType checkType(VarDecl v){
+		if(v.type.equals(IntegerArray.class)){
+			return new LlvmPointer(LlvmPrimitiveType.I32);
+		}else if(v.type.equals(Identifier.class)){
+			return LlvmPrimitiveType.I32;
+		}
+		return LlvmPrimitiveType.I32;
+	}
+
+	public LlvmValue visit(ClassDeclExtends n){
+		System.out.println("ENTER NODE - Class Declaration Extends");
+		return null;
+	}
+
+	public LlvmValue visit(VarDecl n) {
+		System.out.println("ENTER NODE - Variable Declaration - var: " + n.name.toString());
+		
+		return n.type.accept(this);
+	}
+
+	public LlvmValue visit(MethodDecl n){
+		System.out.println("ENTER NODE - Method Declaration");
+		return null;
+	}
+
+	public LlvmValue visit(Formal n){
+		System.out.println("ENTER NODE - Formal");
+		return null;
+	}
+
+	public LlvmValue visit(IntArrayType n){
+		System.out.println("ENTER NODE - Integer Array Type");
+		return null;
+	}
+
+	public LlvmValue visit(BooleanType n){
+		System.out.println("ENTER NODE - Boolean Type");
+		return null;
+	}
+
+	public LlvmValue visit(IntegerType n){
+		System.out.println("ENTER NODE - Integer Type");
+		return null;
+	}
+
+	public LlvmValue visit(IdentifierType n){
+		System.out.println("ENTER NODE - Identifier Type");
+		return null;
+	}
+
+	public LlvmValue visit(Block n){
+		System.out.println("ENTER NODE - Block");
+		return null;
+	}
+
+	public LlvmValue visit(If n){
+		System.out.println("ENTER NODE - If");
+		return null;
+	}
+
+	public LlvmValue visit(While n){
+		System.out.println("ENTER NODE - While");
+		return null;
+	}
+
+	public LlvmValue visit(Assign n){
+		System.out.println("ENTER NODE - Assign");
+		return null;
+	}
+
+	public LlvmValue visit(ArrayAssign n){
+		System.out.println("ENTER NODE - Array Sign");
+		return null;
+	}
+
+	public LlvmValue visit(And n){
+		System.out.println("ENTER NODE - And");
+		return null;
+	}
+
+	public LlvmValue visit(LessThan n){
+		System.out.println("ENTER NODE - Less Than");
+		return null;
+	}
+
+	public LlvmValue visit(Equal n){
+		System.out.println("ENTER NODE - Equal");
+		return null;
+	}
+
+	public LlvmValue visit(Minus n){
+		System.out.println("ENTER NODE - Minus");
+		return null;
+	}
+
+	public LlvmValue visit(Times n){
+		System.out.println("ENTER NODE - Times");
+		return null;
+	}
+
+	public LlvmValue visit(ArrayLookup n){
+		System.out.println("ENTER NODE - Array Lookup");
+		return null;
+	}
+
+	public LlvmValue visit(ArrayLength n){
+		System.out.println("ENTER NODE - Array Lenght");
+		return null;
+	}
+
+	public LlvmValue visit(Call n){
+		System.out.println("ENTER NODE - Call");
+		return null;
+	}
+
+	public LlvmValue visit(True n){
+		System.out.println("ENTER NODE - True");
+		return null;
+	}
+
+	public LlvmValue visit(False n){
+		System.out.println("ENTER NODE - False");
+		return null;
+	}
+
+	public LlvmValue visit(IdentifierExp n){
+		System.out.println("ENTER NODE - Identifier Exp");
+		return null;
+	}
+
+	public LlvmValue visit(This n){
+		System.out.println("ENTER NODE - This");
+		return null;
+	}
+
+	public LlvmValue visit(NewArray n){
+		System.out.println("ENTER NODE - New Array");
+		return null;
+	}
+
+	public LlvmValue visit(NewObject n){
+		System.out.println("ENTER NODE - New Object");
+		return null;
+	}
+
+	public LlvmValue visit(Not n){
+		System.out.println("ENTER NODE - Not");
+		return null;
+	}
+
+	public LlvmValue visit(Identifier n){
+		System.out.println("ENTER NODE - Identifier");
+		return null;
+	}
 }
 
 
