@@ -233,32 +233,31 @@ public class Codegen extends VisitorAdapter{
 	};
 
 	// Todos os visit's que devem ser implementados
+	
+	// CLASS OPERATIONS
+	
 	public LlvmValue visit(ClassDeclSimple n){
 		System.out.println("ENTER NODE - Class Declaration Simple");
 		
+		// Passa por todos os atributos e cria a structure da class
 		List<LlvmType> typeList = new LinkedList<LlvmType>();
+		List<LlvmValue> varList = new LinkedList<LlvmValue>();
 		
+		LlvmValue v;
 		util.List<VarDecl> vars = n.varList;
-		if(vars.head != null){
-			typeList.add(checkType(vars.head));
-			while(vars.tail != null){
-				vars = vars.tail;
-				typeList.add(checkType(vars.head));
-			}
+		for(; vars != null; vars = vars.tail){
+			v = vars.head.accept(this);
+			varList.add(v);
+			typeList.add(v.type);
 		}
 		
 		LlvmStructure newClass = new LlvmStructure(typeList);
+		assembler.add(new LlvmConstantDeclaration("%class." + n.name.toString(), "type " + newClass.toString()));
+		
+		//atualizacao do classEnv
+		classEnv = new ClassNode(n.toString(), newClass, varList);
 		
 		return null;
-	}
-	
-	public LlvmType checkType(VarDecl v){
-		if(v.type.equals(IntegerArray.class)){
-			return new LlvmPointer(LlvmPrimitiveType.I32);
-		}else if(v.type.equals(Identifier.class)){
-			return LlvmPrimitiveType.I32;
-		}
-		return LlvmPrimitiveType.I32;
 	}
 
 	public LlvmValue visit(ClassDeclExtends n){
@@ -269,7 +268,8 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(VarDecl n) {
 		System.out.println("ENTER NODE - Variable Declaration - var: " + n.name.toString());
 		
-		return n.type.accept(this);
+		LlvmValue tp = n.type.accept(this);
+		return new LlvmNamedValue(n.name.toString(), tp.type);
 	}
 
 	public LlvmValue visit(MethodDecl n){
@@ -277,6 +277,9 @@ public class Codegen extends VisitorAdapter{
 		return null;
 	}
 
+	// TIPOS
+
+	//TODO
 	public LlvmValue visit(Formal n){
 		System.out.println("ENTER NODE - Formal");
 		return null;
@@ -284,50 +287,26 @@ public class Codegen extends VisitorAdapter{
 
 	public LlvmValue visit(IntArrayType n){
 		System.out.println("ENTER NODE - Integer Array Type");
-		return null;
+		return new LlvmNamedValue("intArray", new LlvmPointer(LlvmPrimitiveType.I32));
 	}
 
 	public LlvmValue visit(BooleanType n){
 		System.out.println("ENTER NODE - Boolean Type");
-		return null;
+		return new LlvmNamedValue("boolean", LlvmPrimitiveType.I1);
 	}
 
 	public LlvmValue visit(IntegerType n){
 		System.out.println("ENTER NODE - Integer Type");
-		return null;
+		return new LlvmNamedValue("int", LlvmPrimitiveType.I32);
 	}
 
 	public LlvmValue visit(IdentifierType n){
 		System.out.println("ENTER NODE - Identifier Type");
-		return null;
+		return new LlvmNamedValue("identifier", new LlvmPointer(new LlvmPrimitiveType(n.name.toString())));
 	}
-
-	public LlvmValue visit(Block n){
-		System.out.println("ENTER NODE - Block");
-		return null;
-	}
-
-	public LlvmValue visit(If n){
-		System.out.println("ENTER NODE - If");
-		
-		return null;
-	}
-
-	public LlvmValue visit(While n){
-		System.out.println("ENTER NODE - While");
-		return null;
-	}
-
-	public LlvmValue visit(Assign n){
-		System.out.println("ENTER NODE - Assign");
-		return null;
-	}
-
-	public LlvmValue visit(ArrayAssign n){
-		System.out.println("ENTER NODE - Array Sign");
-		return null;
-	}
-
+	
+	// OPERATIONS
+	
 	public LlvmValue visit(And n){
 		System.out.println("ENTER NODE - And");
 		LlvmValue v1 = n.lhs.accept(this);
@@ -372,6 +351,47 @@ public class Codegen extends VisitorAdapter{
 		assembler.add(new LlvmTimes(lhs,LlvmPrimitiveType.I32,v1,v2));
 		return lhs;
 	}
+	
+	public LlvmValue visit(True n){
+		System.out.println("ENTER NODE - True");
+		return (new LlvmBool(LlvmBool.TRUE));
+	}
+
+	public LlvmValue visit(False n){
+		System.out.println("ENTER NODE - False");
+		return (new LlvmBool(LlvmBool.FALSE));
+	}
+	
+	// TODO
+	
+	public LlvmValue visit(Block n){
+		System.out.println("ENTER NODE - Block");
+		
+		
+		return null;
+	}
+
+	public LlvmValue visit(If n){
+		System.out.println("ENTER NODE - If");
+		
+		
+		return null;
+	}
+
+	public LlvmValue visit(While n){
+		System.out.println("ENTER NODE - While");
+		return null;
+	}
+
+	public LlvmValue visit(Assign n){
+		System.out.println("ENTER NODE - Assign");
+		return null;
+	}
+
+	public LlvmValue visit(ArrayAssign n){
+		System.out.println("ENTER NODE - Array Sign");
+		return null;
+	}
 
 	public LlvmValue visit(ArrayLookup n){
 		System.out.println("ENTER NODE - Array Lookup");
@@ -386,16 +406,6 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(Call n){
 		System.out.println("ENTER NODE - Call");
 		return null;
-	}
-
-	public LlvmValue visit(True n){
-		System.out.println("ENTER NODE - True");
-		return (new LlvmBool(LlvmBool.TRUE));
-	}
-
-	public LlvmValue visit(False n){
-		System.out.println("ENTER NODE - False");
-		return (new LlvmBool(LlvmBool.FALSE));
 	}
 
 	public LlvmValue visit(IdentifierExp n){
