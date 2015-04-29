@@ -42,7 +42,9 @@ import java.util.Map;
 import com.sun.org.apache.xalan.internal.xsltc.util.IntegerArray;
 
 import llvmast.LlvmAlloca;
+import llvmast.LlvmAnd;
 import llvmast.LlvmArray;
+import llvmast.LlvmBool;
 import llvmast.LlvmCall;
 import llvmast.LlvmCloseDefinition;
 import llvmast.LlvmConstantDeclaration;
@@ -307,6 +309,7 @@ public class Codegen extends VisitorAdapter{
 
 	public LlvmValue visit(If n){
 		System.out.println("ENTER NODE - If");
+		
 		return null;
 	}
 
@@ -327,7 +330,11 @@ public class Codegen extends VisitorAdapter{
 
 	public LlvmValue visit(And n){
 		System.out.println("ENTER NODE - And");
-		return null;
+		LlvmValue v1 = n.lhs.accept(this);
+		LlvmValue v2 = n.rhs.accept(this);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		assembler.add(new LlvmAnd(lhs,LlvmPrimitiveType.I32,v1,v2));
+		return lhs;
 	}
 
 	public LlvmValue visit(LessThan n){
@@ -383,12 +390,12 @@ public class Codegen extends VisitorAdapter{
 
 	public LlvmValue visit(True n){
 		System.out.println("ENTER NODE - True");
-		return null;
+		return (new LlvmBool(LlvmBool.TRUE));
 	}
 
 	public LlvmValue visit(False n){
 		System.out.println("ENTER NODE - False");
-		return null;
+		return (new LlvmBool(LlvmBool.FALSE));
 	}
 
 	public LlvmValue visit(IdentifierExp n){
