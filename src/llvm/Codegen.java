@@ -49,11 +49,13 @@ import llvmast.LlvmConstantDeclaration;
 import llvmast.LlvmDefine;
 import llvmast.LlvmExternalDeclaration;
 import llvmast.LlvmGetElementPointer;
+import llvmast.LlvmIcmp;
 import llvmast.LlvmInstruction;
 import llvmast.LlvmIntegerLiteral;
 import llvmast.LlvmLabel;
 import llvmast.LlvmLabelValue;
 import llvmast.LlvmLoad;
+import llvmast.LlvmMinus;
 import llvmast.LlvmNamedValue;
 import llvmast.LlvmPlus;
 import llvmast.LlvmPointer;
@@ -62,6 +64,7 @@ import llvmast.LlvmRegister;
 import llvmast.LlvmRet;
 import llvmast.LlvmStore;
 import llvmast.LlvmStructure;
+import llvmast.LlvmTimes;
 import llvmast.LlvmType;
 import llvmast.LlvmValue;
 import semant.Env;
@@ -329,22 +332,38 @@ public class Codegen extends VisitorAdapter{
 
 	public LlvmValue visit(LessThan n){
 		System.out.println("ENTER NODE - Less Than");
-		return null;
+		LlvmValue v1 = n.lhs.accept(this);
+		LlvmValue v2 = n.rhs.accept(this);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		assembler.add(new LlvmIcmp(lhs,2,LlvmPrimitiveType.I32,v1,v2));
+		return lhs;
 	}
 
 	public LlvmValue visit(Equal n){
 		System.out.println("ENTER NODE - Equal");
-		return null;
+		LlvmValue v1 = n.lhs.accept(this);
+		LlvmValue v2 = n.rhs.accept(this);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		assembler.add(new LlvmIcmp(lhs,1,LlvmPrimitiveType.I32,v1,v2));
+		return lhs;
 	}
 
 	public LlvmValue visit(Minus n){
 		System.out.println("ENTER NODE - Minus");
-		return null;
+		LlvmValue v1 = n.lhs.accept(this);
+		LlvmValue v2 = n.rhs.accept(this);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		assembler.add(new LlvmMinus(lhs,LlvmPrimitiveType.I32,v1,v2));
+		return lhs;
 	}
 
 	public LlvmValue visit(Times n){
 		System.out.println("ENTER NODE - Times");
-		return null;
+		LlvmValue v1 = n.lhs.accept(this);
+		LlvmValue v2 = n.rhs.accept(this);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
+		assembler.add(new LlvmTimes(lhs,LlvmPrimitiveType.I32,v1,v2));
+		return lhs;
 	}
 
 	public LlvmValue visit(ArrayLookup n){
