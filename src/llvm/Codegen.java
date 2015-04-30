@@ -39,12 +39,11 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 
-import com.sun.org.apache.xalan.internal.xsltc.util.IntegerArray;
-
 import llvmast.LlvmAlloca;
 import llvmast.LlvmAnd;
 import llvmast.LlvmArray;
 import llvmast.LlvmBool;
+import llvmast.LlvmBranch;
 import llvmast.LlvmCall;
 import llvmast.LlvmCloseDefinition;
 import llvmast.LlvmConstantDeclaration;
@@ -321,7 +320,8 @@ public class Codegen extends VisitorAdapter{
 		LlvmValue v1 = n.lhs.accept(this);
 		LlvmValue v2 = n.rhs.accept(this);
 		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
-		assembler.add(new LlvmIcmp(lhs,2,LlvmPrimitiveType.I32,v1,v2));
+		LlvmIcmp cmp = new LlvmIcmp(lhs,2,LlvmPrimitiveType.I32,v1,v2);
+		assembler.add(cmp);
 		return lhs;
 	}
 
@@ -374,6 +374,20 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(If n){
 		System.out.println("ENTER NODE - If");
 		
+		LlvmValue cond = n.condition.accept(this);
+		LlvmLabelValue t = new LlvmLabelValue("ifTrue"+n.line);
+		LlvmLabelValue f = new LlvmLabelValue("ifFalse"+n.line);
+		LlvmLabelValue e = new LlvmLabelValue("ifEnd"+n.line);
+		
+		assembler.add(new LlvmBranch(cond,t,f));
+		assembler.add(new LlvmLabel(t));
+		n.thenClause.accept(this);
+		assembler.add(new LlvmBranch(e));
+		assembler.add(new LlvmLabel(f));
+		if(n.elseClause != null){
+			n.elseClause.accept(this);
+		}
+		assembler.add(new LlvmLabel(e));
 		
 		return null;
 	}

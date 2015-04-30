@@ -1,9 +1,10 @@
 package llvmast;
 public  class LlvmIcmp extends LlvmInstruction{
-	 	public LlvmRegister lhs;
-	 	private int conditionCode;
-	    public LlvmType type;
-	    public LlvmValue op1, op2;
+ 	public LlvmRegister lhs;
+ 	private int conditionCode;
+    public LlvmType type;
+    public LlvmValue op1, op2;
+    
     public LlvmIcmp(LlvmRegister lhs, int conditionCode, LlvmType type, LlvmValue op1, LlvmValue op2){
     	this.lhs = lhs;
     	this.conditionCode = conditionCode;
