@@ -59,6 +59,7 @@ import llvmast.LlvmLabelValue;
 import llvmast.LlvmLoad;
 import llvmast.LlvmMinus;
 import llvmast.LlvmNamedValue;
+import llvmast.LlvmNot;
 import llvmast.LlvmPlus;
 import llvmast.LlvmPointer;
 import llvmast.LlvmPrimitiveType;
@@ -379,8 +380,8 @@ public class Codegen extends VisitorAdapter{
 		System.out.println("ENTER NODE - And");
 		LlvmValue v1 = n.lhs.accept(this);
 		LlvmValue v2 = n.rhs.accept(this);
-		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I32);
-		assembler.add(new LlvmAnd(lhs,LlvmPrimitiveType.I32,v1,v2));
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I1);
+		assembler.add(new LlvmAnd(lhs,LlvmPrimitiveType.I1,v1,v2));
 		return lhs;
 	}
 
@@ -456,6 +457,29 @@ public class Codegen extends VisitorAdapter{
 		return cond;
 	}
 	
+	public LlvmValue visit(While n){
+		System.out.println("ENTER NODE - While");
+		
+		LlvmValue cond = n.condition.accept(this);
+		
+		LlvmLabelValue clean = null;
+		LlvmLabelValue w = new LlvmLabelValue("ifWhile" + n.line);
+		LlvmLabelValue d = new LlvmLabelValue("ifDo" + n.line);
+		LlvmLabelValue e = new LlvmLabelValue("ifEnd" + n.line);
+		
+		assembler.add(new LlvmBranch(clean, w, clean));
+		assembler.add(new LlvmLabel(w));
+		assembler.add(new LlvmBranch(cond, d, e));
+		assembler.add(new LlvmLabel(d));
+		
+  		n.body.accept(this);
+		assembler.add(new LlvmBranch(clean, w, clean));
+		assembler.add(new LlvmLabel(e));
+	
+		return null;
+	}
+
+	
 	// TODO
 	
 	public LlvmValue visit(Block n){
@@ -466,11 +490,6 @@ public class Codegen extends VisitorAdapter{
 			stm.head.accept(this);
 		}
 		
-		return null;
-	}
-
-	public LlvmValue visit(While n){
-		System.out.println("ENTER NODE - While");
 		return null;
 	}
 
@@ -516,8 +535,11 @@ public class Codegen extends VisitorAdapter{
 
 	public LlvmValue visit(Not n){
 		System.out.println("ENTER NODE - Not");
-		
-		return null;
+		LlvmValue v1 = n.exp.accept(this);
+		LlvmValue v2 = new LlvmBool(LlvmBool.TRUE);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I1);
+		assembler.add(new LlvmNot(lhs,LlvmPrimitiveType.I1,v1,v2));
+		return lhs;
 	}
 
 	public LlvmValue visit(Identifier n){
@@ -530,7 +552,7 @@ public class Codegen extends VisitorAdapter{
 /**********************************************************************************/
 /* === Tabela de Símbolos ==== 
  * 
- * 
+ *
  */
 /**********************************************************************************/
 
