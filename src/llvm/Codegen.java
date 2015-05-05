@@ -258,7 +258,13 @@ public class Codegen extends VisitorAdapter{
 		//atualizacao do classEnv
 		classEnv = new ClassNode(n.name.toString(), newClass, varList);
 		
-		// TODO: definir construtor para classe / ver 'this'
+		// Define um construtor
+//		List<LlvmValue> param = new LinkedList<LlvmValue>();
+//		param.add(new LlvmNamedValue("%this", new LlvmPointer(new LlvmPrimitiveType(n.name.s))));
+//		assembler.add(new LlvmDefine("@_"+n.name.toString()+"_"+n.name.toString(), LlvmPrimitiveType.VOID, param));
+//		assembler.add(new LlvmLabel(new LlvmLabelValue("entry")));
+//		assembler.add(new LlvmRet(new LlvmNamedValue("", LlvmPrimitiveType.VOID)));
+//		assembler.add(new LlvmCloseDefinition());
 		
 		// Define os métodos
 		util.List<MethodDecl> methods = n.methodList;
@@ -284,15 +290,15 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(MethodDecl n){
 		System.out.println("ENTER NODE - Method Declaration");
 
-		// Atualiza methodEnv
+		// Lista de variaveis locais
 		Map<String, LlvmValue> listLocals = new HashMap<String, LlvmValue>();
 		util.List<VarDecl> locals = n.locals;
 		for( ;locals != null; locals = locals.tail){
 			LlvmValue v = locals.head.accept(this);
 			listLocals.put(locals.head.name.toString(), v);
 		}
-		methodEnv = new MethodNode(n.name.toString(), listLocals); // ???? TEMOS QUE ADD OS PARAMS NA LISTA DE LOCALS??
-		
+			
+		// Lista de parametros
 		List<LlvmValue> listFormals = new LinkedList<LlvmValue>();
 		listFormals.add(new LlvmNamedValue("%this", new LlvmPointer(new LlvmPrimitiveType(classEnv.name))));
 		
@@ -300,7 +306,11 @@ public class Codegen extends VisitorAdapter{
 		for( ;formals != null; formals = formals.tail){
 			LlvmValue c = formals.head.accept(this);
 			listFormals.add(c);
+			listLocals.put(formals.head.name.toString(), c);
 		}
+			
+		// Atualiza methodEnv
+		methodEnv = new MethodNode(n.name.toString(), listLocals);
 		
 		// TODO: no caso em que retorna uma classe deve ser um ponteiro
 		assembler.add(new LlvmDefine("@__" + classEnv.name + "_" + n.name, n.returnType.accept(this).type, listFormals));
@@ -331,6 +341,7 @@ public class Codegen extends VisitorAdapter{
 
 	// TIPOS
 
+	// parametros de funcoes
 	public LlvmValue visit(Formal n){
 		System.out.println("ENTER NODE - Formal");
 		return new LlvmNamedValue("%" + n.name, n.type.accept(this).type);
@@ -354,6 +365,12 @@ public class Codegen extends VisitorAdapter{
 	public LlvmValue visit(IdentifierType n){
 		System.out.println("ENTER NODE - Identifier Type");
 		return new LlvmNamedValue("identifier", new LlvmPointer(new LlvmPrimitiveType(n.name.toString())));
+	}
+	
+	// this = acesso a classe atual
+	public LlvmValue visit(This n){
+		System.out.println("ENTER NODE - This");
+		return new LlvmNamedValue("%this", new LlvmPointer(classEnv));
 	}
 	
 	// OPERATIONS
@@ -414,14 +431,6 @@ public class Codegen extends VisitorAdapter{
 		return (new LlvmBool(LlvmBool.FALSE));
 	}
 	
-	// TODO
-	
-	public LlvmValue visit(Block n){
-		System.out.println("ENTER NODE - Block");
-		
-		return null;
-	}
-
 	public LlvmValue visit(If n){
 		System.out.println("ENTER NODE - If");
 		
@@ -445,6 +454,19 @@ public class Codegen extends VisitorAdapter{
 		assembler.add(new LlvmLabel(e));
 		
 		return cond;
+	}
+	
+	// TODO
+	
+	public LlvmValue visit(Block n){
+		System.out.println("ENTER NODE - Block");
+		
+		util.List<Statement> stm = n.body;
+		for( ;stm != null; stm = stm.tail){
+			stm.head.accept(this);
+		}
+		
+		return null;
 	}
 
 	public LlvmValue visit(While n){
@@ -482,11 +504,6 @@ public class Codegen extends VisitorAdapter{
 		return null;
 	}
 
-	public LlvmValue visit(This n){
-		System.out.println("ENTER NODE - This");
-		return null;
-	}
-
 	public LlvmValue visit(NewArray n){
 		System.out.println("ENTER NODE - New Array");
 		return null;
@@ -499,6 +516,7 @@ public class Codegen extends VisitorAdapter{
 
 	public LlvmValue visit(Not n){
 		System.out.println("ENTER NODE - Not");
+		
 		return null;
 	}
 
