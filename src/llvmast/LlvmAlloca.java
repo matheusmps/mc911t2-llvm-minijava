@@ -6,15 +6,17 @@ public  class LlvmAlloca extends LlvmInstruction{
     public List<LlvmValue> numbers;
 
     public LlvmAlloca(LlvmValue lhs, LlvmType type, List<LlvmValue> numbers){
-	this.lhs = lhs;
-	this.type = type;
-	this.numbers = numbers;
+		this.lhs = lhs;
+		this.type = type;
+		this.numbers = numbers;
     }
 
     public String toString(){
 	String nrs = "";
-	for(LlvmValue v : numbers)
-	    nrs = nrs + ", " + v.type + " " + v;
+	if(numbers != null){
+		for(LlvmValue v : numbers)
+			nrs = nrs + ", " + v.type + " " + v;
+	}
 	return "  " + lhs + " = alloca " + type + nrs;
     }
 }

@@ -14,7 +14,7 @@ public class LlvmPrimitiveType extends LlvmType{
     
     public LlvmPrimitiveType(String s){
     	this.className = s;
-    }
+    } 
     
     public String toString(){
 		if(this == I1) return "i1";
