@@ -44,6 +44,7 @@ import java.util.Map;
 import llvmast.LlvmAlloca;
 import llvmast.LlvmAnd;
 import llvmast.LlvmArray;
+import llvmast.LlvmBitcast;
 import llvmast.LlvmBool;
 import llvmast.LlvmBranch;
 import llvmast.LlvmCall;
@@ -300,7 +301,7 @@ public class Codegen extends VisitorAdapter{
 			methodEnv.formals.put(var.head.name.toString(), val);
 			methodEnv.formalTypes.add(val.type.toString());
 		}
-		assembler.add(new LlvmDefine("@__"+n.name.s+"_"+classEnv.nameClass, type.type, args));
+		assembler.add(new LlvmDefine("@__"+n.name.s+"_"+classEnv.name, type.type, args));
 		assembler.add(new LlvmLabel(new LlvmLabelValue("entry")));
 		//Cria cópias locais dos argumentos
 		boolean passed_this = false;
@@ -323,7 +324,14 @@ public class Codegen extends VisitorAdapter{
 		for (util.List<syntaxtree.Statement> stm = n.body; stm!=null; stm=stm.tail){
 			stm.head.accept(this);
 		}
-		assembler.add(new LlvmRet(n.returnExp.accept(this)));
+		LlvmValue typeReturnExp = n.returnExp.accept(this);
+		if(typeReturnExp.type != type.type){
+			LlvmRegister r = new LlvmRegister(type.type);
+			assembler.add(new LlvmBitcast(r, typeReturnExp, type.type));
+			assembler.add(new LlvmRet(r));
+		}else{
+			assembler.add(new LlvmRet(typeReturnExp));
+		}
 		assembler.add(new LlvmCloseDefinition());
 		return null;
 	}
@@ -611,7 +619,7 @@ public class Codegen extends VisitorAdapter{
 		ClassNode objClass = (ClassNode)((LlvmPointer)obj.type).content;
 
 		// Define o tipo do retorno numa busca iterativa do método nas classes
-		MethodNode method = objClass.methodMap.get(n.method.s);
+		MethodNode method = objClass.methods.get(n.method.s);
 		LlvmValue oldobj;
 		while(method == null){
 			objClass = (ClassNode)((LlvmPointer)objClass.varList.get(0).type).content;
@@ -620,12 +628,12 @@ public class Codegen extends VisitorAdapter{
 			assembler.add(new LlvmGetElementPointer(obj, oldobj,
 					new LlvmIntegerLiteral(0),
 					new LlvmIntegerLiteral(0)));
-			method = objClass.methodMap.get(n.method.s);
+			method = objClass.methods.get(n.method.s);
 		}
 		LlvmRegister lhs = new LlvmRegister(method.type);
 
 		// Define o nome do método do nosso jeito
-		String fnName = "@__"+n.method.s+"_"+objClass.nameClass;
+		String fnName = "@__"+n.method.s+"_"+objClass.name;
 
 		// Monta a lista de argumentos
 		List<LlvmValue> args = new ArrayList<LlvmValue>();
@@ -653,7 +661,7 @@ public class Codegen extends VisitorAdapter{
 						else{
 							System.out.println(p + " - " + arg.type.toString());
 							ClassNode classNode = (ClassNode)((LlvmPointer)arg.type).content;
-							classNode = symTab.classes.get(classNode.nameSuper);
+							classNode = symTab.classes.get(classNode.superClassName);
 							LlvmRegister reg = new LlvmRegister(new LlvmPointer(classNode));
 							assembler.add(new LlvmGetElementPointer(reg, arg,
 									new LlvmIntegerLiteral(0),
@@ -756,16 +764,13 @@ public class Codegen extends VisitorAdapter{
 
 
 /**********************************************************************************/
-/* === Tabela de Símbolos ==== 
- * 
- *
- */
+					/* === Tabela de Símbolos ====  */
 /**********************************************************************************/
 
 class SymTab extends VisitorAdapter{
 	public Map<String, ClassNode> classes;
 	private Codegen codegen;
-	private ClassNode currentClass;
+	private ClassNode current;
 
 	public SymTab(Codegen codegen){
 		classes = new HashMap<String, ClassNode>();
@@ -776,10 +781,12 @@ class SymTab extends VisitorAdapter{
 		n.accept(this);
 		return null;
 	}
+	
 	public LlvmValue visit(Program n){
 		n.mainClass.accept(this);
-
-		for (util.List<ClassDecl> c = n.classList; c != null; c = c.tail)
+		
+		util.List<ClassDecl> c = n.classList;
+		for (; c != null; c = c.tail)
 			c.head.accept(this);
 
 		return null;
@@ -791,137 +798,155 @@ class SymTab extends VisitorAdapter{
 	}
 
 	public LlvmValue visit(ClassDeclSimple n){
-
-		if(classes.containsKey(n.name.s)){
-			currentClass = classes.get(n.name.s);
-		}
-		else{
-			currentClass = new ClassNode();
-			classes.put(n.name.s, currentClass);
-		}
-		// Preenche atributos da classe
 		List<LlvmType> typeList = new ArrayList<LlvmType>();
 		List<LlvmNamedValue> varList = new ArrayList<LlvmNamedValue>();
-
-		for (util.List<syntaxtree.VarDecl> var = n.varList; var!=null; var=var.tail){	
-			LlvmValue lvar = var.head.type.accept(this);
-			LlvmNamedValue nlvar = (LlvmNamedValue) var.head.accept(this);
-			typeList.add(lvar.type);
-			varList.add(nlvar);
+		
+		// Percorre os atributos da classe
+		util.List<VarDecl> vars = n.varList;
+		for ( ; vars !=null; vars = vars.tail){	
+			LlvmValue type = vars.head.type.accept(this);
+			vars.head.accept(this);
+			
+			typeList.add(type.type);
+			varList.add(new LlvmNamedValue(vars.head.name.toString(), type.type));
 		}
 
-		// Percorre n.methodList visitando cada método
-		Map<String, MethodNode> mtdMap = new HashMap<String, MethodNode>();
-		for (util.List<syntaxtree.MethodDecl> mtd = n.methodList; mtd!=null; mtd=mtd.tail){
-			if (!mtdMap.containsKey(mtd.head.name.s))
-				mtdMap.put(mtd.head.name.s, (MethodNode)mtd.head.accept(this));
+		// Percorre os métodos da classe
+		Map<String, MethodNode> metList = new HashMap<String, MethodNode>();
+		util.List<MethodDecl> mtd = n.methodList;
+		for (; mtd != null; mtd = mtd.tail){
+			if (!metList.containsKey(mtd.head.name.s))
+				metList.put(mtd.head.name.s, (MethodNode)mtd.head.accept(this));
 		}
-
-		// Adiciona valores ao mapa <nome da classe, nó da classe>
-		currentClass.nameClass = n.name.s; 
-		currentClass.classType = new LlvmStructure(typeList); 
-		currentClass.varList = varList;
-		currentClass.methodMap = mtdMap;
+		
+		if(classes.containsKey(n.name.s)){
+			current = classes.get(n.name.s);
+			current.classType = new LlvmStructure(typeList); 
+			current.varList = varList;
+			current.methods = metList;
+		}
+		else{
+			current = new ClassNode(n.name.s, new LlvmStructure(typeList), varList, metList);
+			classes.put(n.name.s, current);
+		}
 
 		return null;
 	}
 
 	public LlvmValue visit(MethodDecl n){
-		MethodNode lhs = new MethodNode();
-		//Identifica o tipo do método
-		lhs.type = n.returnType.accept(codegen).type;
-		//Perpara a declaração do método, preenchendo o mapa de símbolos
-		lhs.formals.put("this",new LlvmNamedValue("%this", new LlvmPointer(currentClass)));
-		lhs.formalTypes.add(new LlvmPointer(currentClass).toString());
-		for (util.List<syntaxtree.Formal> var = n.formals; var!=null; var=var.tail){
-			lhs.formals.put(var.head.name.toString(), var.head.accept(this));
-			lhs.formalTypes.add(var.head.type.accept(codegen).type.toString());
+		LlvmType type = n.returnType.accept(codegen).type;
+		Map<String, LlvmValue> listFormals = new HashMap<String, LlvmValue>();
+		List<String> listFormalsType = new LinkedList<String>();
+		Map<String, LlvmValue> listLocals = new HashMap<String, LlvmValue>();
+		
+		// this
+		listFormals.put("this",new LlvmNamedValue("%this", new LlvmPointer(current)));
+		listFormalsType.add(new LlvmPointer(current).toString());
+		
+		// params
+		util.List<Formal> formals = n.formals;
+		for (; formals != null; formals = formals.tail){
+			LlvmValue v = formals.head.accept(this);
+			LlvmType t = formals.head.type.accept(codegen).type;
+			
+			listFormals.put(formals.head.name.toString(), v);
+			listFormalsType.add(t.toString());
 		}
-		//Visita as declarações locais de variáveis preenchendo o mapa
-		for (util.List<syntaxtree.VarDecl> var = n.locals; var!=null; var=var.tail){
-			lhs.vars.put(var.head.name.toString(), var.head.accept(this));
+		
+		// locals
+		util.List<VarDecl> locals = n.locals;
+		for (; locals != null; locals = locals.tail){
+			listLocals.put(locals.head.name.toString(), locals.head.accept(this));
 		}
-		return lhs;
+		
+		return new MethodNode(listFormals, listFormalsType, listLocals, type);
 	}
+	
 	public LlvmValue visit(ClassDeclExtends n){
-		List<LlvmType> typeList = new ArrayList<LlvmType>();
-		List<LlvmNamedValue> varList = new ArrayList<LlvmNamedValue>();
-
-		if(classes.containsKey(n.name.s)){
-			currentClass = classes.get(n.name.s);
-		}
-		else{
-			currentClass = new ClassNode();
-			classes.put(n.name.s, currentClass);
-		}
-
+		List<LlvmType> typeList = new LinkedList<LlvmType>();
+		List<LlvmNamedValue> varList = new LinkedList<LlvmNamedValue>();
+	
 		typeList.add(classes.get(n.superClass.s));
 		varList.add(new LlvmNamedValue("%super",new LlvmPointer(classes.get(n.superClass.s))));
-		for (util.List<syntaxtree.VarDecl> var = n.varList; var!=null; var=var.tail){	
-			LlvmValue lvar = var.head.type.accept(codegen);
-			LlvmNamedValue nlvar = (LlvmNamedValue) var.head.accept(this);
-			typeList.add(lvar.type);
-			varList.add(nlvar);
+		
+		util.List<VarDecl> vars = n.varList;
+		for (; vars != null; vars = vars.tail){	
+			LlvmValue type = vars.head.type.accept(this);
+			vars.head.accept(this);
+			
+			typeList.add(type.type);
+			varList.add(new LlvmNamedValue(vars.head.name.toString(), type.type));
 		}
-
-		// Percorre n.methodList visitando cada método
-		Map<String, MethodNode> mtdMap = new HashMap<String, MethodNode>();
-		for (util.List<syntaxtree.MethodDecl> mtd = n.methodList; mtd!=null; mtd=mtd.tail){
-			mtdMap.put(mtd.head.name.s, (MethodNode)mtd.head.accept(this));
+		
+		// Percorre os métodos da classe
+		Map<String, MethodNode> metList = new HashMap<String, MethodNode>();
+		util.List<MethodDecl> mtd = n.methodList;
+		for (; mtd != null; mtd = mtd.tail){
+			if (!metList.containsKey(mtd.head.name.s))
+				metList.put(mtd.head.name.s, (MethodNode)mtd.head.accept(this));
 		}
-
-		// Adiciona valores ao mapa <nome da classe, nó da classe>
-		currentClass.nameClass = n.name.s; 
-		currentClass.classType = new LlvmStructure(typeList); 
-		currentClass.varList = varList;
-		currentClass.methodMap = mtdMap;
-		currentClass.nameSuper = n.superClass.s;
+		
+		if(classes.containsKey(n.name.s)){
+			current = classes.get(n.name.s);
+			current.classType = new LlvmStructure(typeList); 
+			current.varList = varList;
+			current.methods = metList;
+			current.superClassName = n.superClass.s;
+		}
+		else{
+			current = new ClassNode(n.name.s, new LlvmStructure(typeList), varList, metList);
+			current.superClassName = n.superClass.s;
+			classes.put(n.name.s, current);
+		}
 
 		return null;
-
 	}
+	
 	public LlvmValue visit(VarDecl n){
 		return new LlvmNamedValue(n.name.toString(), n.type.accept(this).type);
 	}
-	public LlvmValue visit(Formal n){
-		LlvmValue arg = new LlvmNamedValue("%"+n.name.s, n.type.accept(this).type);
-		return arg;
-	}
+
 	public LlvmValue visit(IdentifierType n){
 		return new LlvmNamedValue("", new LlvmPointer(classes.get(n.name)));
 	}
+	
+	public LlvmValue visit(Formal n){
+		return new LlvmNamedValue("%" + n.name, n.type.accept(this).type);
+	}
+
 	public LlvmValue visit(IntArrayType n){
-		return new LlvmNamedValue("", new LlvmPointer(LlvmPrimitiveType.I32));
+		return new LlvmNamedValue("intArray", new LlvmPointer(LlvmPrimitiveType.I32));
 	}
+
 	public LlvmValue visit(BooleanType n){
-		return new LlvmNamedValue("", LlvmPrimitiveType.I1);
+		return new LlvmNamedValue("boolean", LlvmPrimitiveType.I1);
 	}
+
 	public LlvmValue visit(IntegerType n){
-		return new LlvmNamedValue("", LlvmPrimitiveType.I32);
+		return new LlvmNamedValue("int", LlvmPrimitiveType.I32);
 	}
 }
 
 class ClassNode extends LlvmType {
-	public String nameClass;
-	public String nameSuper;
+	public String name;
+	public String superClassName;
 	public LlvmStructure classType;
 	public List<LlvmNamedValue> varList;
-	public Map<String, MethodNode> methodMap;
-
-	ClassNode (String nameClass, LlvmStructure classType, List<LlvmNamedValue> varList, Map<String, MethodNode> mtdMap){
-		this.nameClass = nameClass;
-		this.classType = classType;
-		this.varList = varList;
-		this.methodMap = mtdMap;
-		this.nameSuper = null;
-	}
+	public Map<String, MethodNode> methods;
 
 	ClassNode(){
-
+	}
+	
+	ClassNode (String name, LlvmStructure classType, List<LlvmNamedValue> varList, Map<String, MethodNode> meth){
+		this.name = name;
+		this.classType = classType;
+		this.varList = varList;
+		this.methods = meth;
+		this.superClassName = null;
 	}
 
 	public String toString(){
-		return "%class." + nameClass;
+		return "%class." + name;
 	}
 }
 
@@ -934,6 +959,13 @@ class MethodNode extends LlvmValue{
 		formals = new HashMap<String, LlvmValue>();
 		formalTypes = new ArrayList<String>();
 		vars = new HashMap<String, LlvmValue>();
+	}
+	
+	public MethodNode(Map<String, LlvmValue> formals, List<String> formalTypes, Map<String, LlvmValue> vars, LlvmType returnType){
+		this.formals = formals;
+		this.formalTypes = formalTypes;
+		this.vars = vars;
+		this.type = returnType;
 	}
 }
 
