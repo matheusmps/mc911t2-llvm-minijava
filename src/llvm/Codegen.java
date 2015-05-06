@@ -223,8 +223,9 @@ public class Codegen extends VisitorAdapter{
 		LlvmRegister lhs = new LlvmRegister(new LlvmPointer(LlvmPrimitiveType.I8));
 		LlvmRegister src = new LlvmNamedValue("@.formatting.string",new LlvmPointer(new LlvmArray(4,LlvmPrimitiveType.I8)));
 		List<LlvmValue> offsets = new LinkedList<LlvmValue>();
-		offsets.add(new LlvmIntegerLiteral(0));
-		offsets.add(new LlvmIntegerLiteral(0));
+		LlvmValue off = new LlvmIntegerLiteral(0);
+		offsets.add(off);
+		offsets.add(off);
 		List<LlvmType> pts = new LinkedList<LlvmType>();
 		pts.add(new LlvmPointer(LlvmPrimitiveType.I8));
 		List<LlvmValue> args = new LinkedList<LlvmValue>();
@@ -381,6 +382,15 @@ public class Codegen extends VisitorAdapter{
 		return lhs;
 	}
 
+	public LlvmValue visit(Not n){
+		System.out.println("ENTER NODE - Not");
+		LlvmValue v1 = n.exp.accept(this);
+		LlvmValue v2 = new LlvmBool(LlvmBool.TRUE);
+		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I1);
+		assembler.add(new LlvmNot(lhs,LlvmPrimitiveType.I1,v1,v2));
+		return lhs;
+	}
+	
 	public LlvmValue visit(LessThan n){
 		System.out.println("ENTER NODE - Less Than");
 		LlvmValue v1 = n.lhs.accept(this);
@@ -476,7 +486,6 @@ public class Codegen extends VisitorAdapter{
 		return null;
 	}
 
-	
 	// TODO
 	
 	public LlvmValue visit(Block n){
@@ -492,125 +501,145 @@ public class Codegen extends VisitorAdapter{
 
 	public LlvmValue visit(Assign n){
 		LlvmValue opt = n.exp.accept(this);
-		// Caso esteja na lista de parâmetros, declara constante em registrador copiado
+		
 		if(methodEnv.formals.containsKey(n.var.s)){
 			LlvmValue val = methodEnv.formals.get(n.var.s);
 			LlvmValue lhs = new LlvmRegister(val.type);
 			LlvmValue formLocal = new LlvmRegister(((LlvmNamedValue)val).name+"_local",new LlvmPointer(lhs.type));
 			assembler.add(new LlvmStore(opt, formLocal));
 		}
-		// Caso esteja na lista de símbolos (variáveis) locais, declara constante em registrador
+		
 		else if (methodEnv.vars.containsKey(n.var.s)){
 			LlvmValue var = methodEnv.vars.get(n.var.s);
 			assembler.add(new LlvmStore(opt, var));
 		}
-		// Caso contrário, procura símbolo na symtable da classe
+		
 		else{
 			LlvmNamedValue vthis = new LlvmNamedValue("%this", new LlvmPointer(classEnv));
-			recursiveLookUpAssign(classEnv, opt, n, vthis);
+			lookUp2(classEnv, opt, n, vthis);
 		}
 		return null;
 	}
 
-	public void recursiveLookUpAssign(ClassNode c, LlvmValue opt, Assign n, LlvmValue vthis){
+	public void lookUp2(ClassNode c, LlvmValue opt, Assign n, LlvmValue vthis){
 		int i = -1;
 		for(LlvmNamedValue var : c.varList){
 			i++;
-			// Se acha variável na classe atual, encerra recursão
+			
 			if(var.name.equals(n.var.s)){
 				LlvmRegister reg = new LlvmRegister(new LlvmPointer(var.type));
 				//TODO tratar offset dependendo do tipo da variável
-				assembler.add(new LlvmGetElementPointer(reg, vthis,
-						new LlvmIntegerLiteral(0),
-						new LlvmIntegerLiteral(i)));
+				List<LlvmValue> offsets = new ArrayList<LlvmValue>();
+				LlvmValue off0 = new LlvmIntegerLiteral(0);
+				LlvmValue off1 = new LlvmIntegerLiteral(i);
+				offsets.add(off0);
+				offsets.add(off1);
+				assembler.add(new LlvmGetElementPointer(reg, vthis, offsets));
 				assembler.add(new LlvmStore(opt, reg));
 				return;
 			}
 		}
-		// Caso contrário, continua a procurar
+		
 		LlvmNamedValue sup = classEnv.varList.get(0);
 		if(sup.name.equals("%super")){
 			ClassNode cnew = (ClassNode)((LlvmPointer)sup.type).content;
 			LlvmRegister reg = new LlvmRegister(new LlvmPointer(cnew));
-			assembler.add(new LlvmGetElementPointer(reg, vthis,
-					new LlvmIntegerLiteral(0),
-					new LlvmIntegerLiteral(0)));
-			recursiveLookUpAssign(cnew, opt, n, reg);
+			List<LlvmValue> offsets = new ArrayList<LlvmValue>();
+			LlvmValue off = new LlvmIntegerLiteral(0);
+			offsets.add(off);
+			offsets.add(off);
+			assembler.add(new LlvmGetElementPointer(reg, vthis, offsets));
+			lookUp2(cnew, opt, n, reg);
 		}
 	}
 
 	public LlvmValue visit(ArrayAssign n){		
-		List<LlvmValue> offs = new ArrayList<LlvmValue>();
-
-		LlvmValue opt = n.value.accept(this);
-		// Caso esteja na lista de símbolos (variáveis) locais, declara constante em registrador
+		List<LlvmValue> offsets = new ArrayList<LlvmValue>();
+		LlvmValue v = n.value.accept(this);
+		LlvmValue vt = n.value.type.accept(this);
+		LlvmValue off = n.index.accept(this);
+		
 		if (methodEnv.vars.containsKey(n.var.s)){
 			LlvmValue var = methodEnv.vars.get(n.var.s);
-			LlvmValue off = n.index.accept(this);
-			offs.add(off);
-			LlvmValue pointer = new LlvmRegister(new LlvmPointer(n.value.type.accept(this).type));
-			LlvmValue value = new LlvmRegister(new LlvmPointer(n.value.type.accept(this).type));
-			assembler.add(new LlvmLoad(pointer, var));
-			assembler.add(new LlvmGetElementPointer(value, pointer, offs));
-			assembler.add(new LlvmStore(opt, value));
+			offsets.add(off);
+			LlvmValue p = new LlvmRegister(new LlvmPointer(vt.type));
+			LlvmValue value = new LlvmRegister(new LlvmPointer(vt.type));
+			assembler.add(new LlvmLoad(p, var));
+			assembler.add(new LlvmGetElementPointer(value, p, offsets));
+			assembler.add(new LlvmStore(v, value));
 		}
-		// Caso contrário, procura símbolo na symtable da classe
+		
 		else
 		{	
 			LlvmNamedValue vthis = new LlvmNamedValue("%this", new LlvmPointer(classEnv));
-			LlvmValue off = n.index.accept(this);
-			offs.add(off);
-			recursiveLookUpArrayAssign(classEnv, opt, n, vthis, offs);
+			offsets.add(off);
+			lookUp(classEnv, v, n, vthis, offsets);
 		}
 		return null;
 	}
 	
-	public void recursiveLookUpArrayAssign(ClassNode c, LlvmValue opt, ArrayAssign n, LlvmValue vthis, List<LlvmValue> offs){
+	public void lookUp(ClassNode c, LlvmValue opt, ArrayAssign n, LlvmValue vthis, List<LlvmValue> offs){
 		int i = -1;
 		for(LlvmNamedValue var : c.varList){
 			i++;
-			// Se acha variável na classe atual, encerra recursão
+			
 			if(var.name.equals(n.var.s)){
+				LlvmValue vt = n.value.type.accept(this);
 				LlvmRegister reg = new LlvmRegister(new LlvmPointer(var.type));
-				LlvmValue pointer = new LlvmRegister(new LlvmPointer(n.value.type.accept(this).type));
-				LlvmValue value = new LlvmRegister(new LlvmPointer(n.value.type.accept(this).type));
-				assembler.add(new LlvmGetElementPointer(reg, vthis, new LlvmIntegerLiteral(0),new LlvmIntegerLiteral(i)));
+				LlvmValue pointer = new LlvmRegister(new LlvmPointer(vt.type));
+				LlvmValue value = new LlvmRegister(new LlvmPointer(vt.type));
+				LinkedList<LlvmValue> offsets = new LinkedList<>();
+				LlvmValue off0 = new LlvmIntegerLiteral(0);
+				LlvmValue off1 = new LlvmIntegerLiteral(i);
+				offsets.add(off0);
+				offsets.add(off1);
+				assembler.add(new LlvmGetElementPointer(reg, vthis, offsets));
 				assembler.add(new LlvmLoad(pointer, reg));
 				assembler.add(new LlvmGetElementPointer(value, pointer, offs));
 				assembler.add(new LlvmStore(opt, value));
 				return;
 			}
 		}
-		// Caso contrário, continua a procurar
+		
 		LlvmNamedValue sup = classEnv.varList.get(0);
 		if(sup.name.equals("%super")){
+			LinkedList<LlvmValue> offsets = new LinkedList<>();
+			LlvmValue off = new LlvmIntegerLiteral(0);
+			offsets.add(off);
+			offsets.add(off);
 			ClassNode cnew = (ClassNode)((LlvmPointer)sup.type).content;
 			LlvmRegister reg = new LlvmRegister(new LlvmPointer(cnew));
-			assembler.add(new LlvmGetElementPointer(reg, vthis,	new LlvmIntegerLiteral(0), new LlvmIntegerLiteral(0)));
-			recursiveLookUpArrayAssign(cnew, opt, n, reg, offs);
+			assembler.add(new LlvmGetElementPointer(reg, vthis,	offsets));
+			lookUp(cnew, opt, n, reg, offs);
 		}
 	}
 
 	public LlvmValue visit(ArrayLookup n){
-		List<LlvmValue> offs = new ArrayList<LlvmValue>();
+		List<LlvmValue> offsets = new ArrayList<LlvmValue>();
 		LlvmValue off = n.index.accept(this);
-		offs.add(off);
-
-		LlvmValue pointer = new LlvmRegister(n.array.type.accept(this).type);
-		assembler.add(new LlvmGetElementPointer(pointer, n.array.accept(this), offs));
-
-		LlvmValue value = new LlvmRegister(n.type.accept(this).type);
-		assembler.add(new LlvmLoad(value, pointer));
-		return value;
+		LlvmValue t = n.array.type.accept(this);
+		LlvmValue vt = n.type.accept(this);
+		LlvmValue array = n.array.accept(this);
+		offsets.add(off);
+		
+		LlvmValue p = new LlvmRegister(t.type);
+		assembler.add(new LlvmGetElementPointer(p, array, offsets));
+		LlvmValue v = new LlvmRegister(vt.type);
+		assembler.add(new LlvmLoad(v, p));
+		
+		return v;
 	}
 
 	public LlvmValue visit(ArrayLength n){
+		LinkedList<LlvmValue> offsets = new LinkedList<>();
 		LlvmValue array = n.array.accept(this);
-		LlvmRegister lhs = new LlvmRegister(new LlvmPointer(LlvmPrimitiveType.I32));
-		LlvmRegister size = new LlvmRegister(LlvmPrimitiveType.I32);
-		assembler.add(new LlvmGetElementPointer(lhs, array, new LlvmIntegerLiteral(0)));
-		assembler.add(new LlvmLoad(size, lhs));
-		return size;
+		LlvmValue off = new LlvmIntegerLiteral(0);
+		offsets.add(off);
+		LlvmRegister v = new LlvmRegister(new LlvmPointer(LlvmPrimitiveType.I32));
+		LlvmRegister lenght = new LlvmRegister(LlvmPrimitiveType.I32);
+		assembler.add(new LlvmGetElementPointer(v, array, offsets));
+		assembler.add(new LlvmLoad(lenght, v));
+		return lenght;
 	}
 
 	public LlvmValue visit(Call n){
@@ -625,9 +654,11 @@ public class Codegen extends VisitorAdapter{
 			objClass = (ClassNode)((LlvmPointer)objClass.varList.get(0).type).content;
 			oldobj = obj;
 			obj = new LlvmRegister(new LlvmPointer(objClass));
-			assembler.add(new LlvmGetElementPointer(obj, oldobj,
-					new LlvmIntegerLiteral(0),
-					new LlvmIntegerLiteral(0)));
+			LinkedList<LlvmValue> offsets = new LinkedList<>();
+			LlvmValue off = new LlvmIntegerLiteral(0);
+			offsets.add(off);
+			offsets.add(off);
+			assembler.add(new LlvmGetElementPointer(obj, oldobj,offsets));
 			method = objClass.methods.get(n.method.s);
 		}
 		LlvmRegister lhs = new LlvmRegister(method.type);
@@ -662,10 +693,12 @@ public class Codegen extends VisitorAdapter{
 							System.out.println(p + " - " + arg.type.toString());
 							ClassNode classNode = (ClassNode)((LlvmPointer)arg.type).content;
 							classNode = symTab.classes.get(classNode.superClassName);
+							LinkedList<LlvmValue> offsets = new LinkedList<>();
+							LlvmValue off = new LlvmIntegerLiteral(0);
+							offsets.add(off);
+							offsets.add(off);
 							LlvmRegister reg = new LlvmRegister(new LlvmPointer(classNode));
-							assembler.add(new LlvmGetElementPointer(reg, arg,
-									new LlvmIntegerLiteral(0),
-									new LlvmIntegerLiteral(0)));
+							assembler.add(new LlvmGetElementPointer(reg, arg, offsets));
 							arg = reg;
 						}
 					}
@@ -710,9 +743,13 @@ public class Codegen extends VisitorAdapter{
 				LlvmRegister ptr = new LlvmRegister(new LlvmPointer(var.type));
 				LlvmRegister lhs = new LlvmRegister(var.type);
 				//TODO tratar offset dependendo do tipo da variável
+				LinkedList<LlvmValue> offsets = new LinkedList<>();
+				LlvmValue off0 = new LlvmIntegerLiteral(0);
+				LlvmValue off1 = new LlvmIntegerLiteral(i);
+				offsets.add(off0);
+				offsets.add(off1);
 				assembler.add(new LlvmGetElementPointer(ptr, vthis,
-						new LlvmIntegerLiteral(0),
-						new LlvmIntegerLiteral(i)));
+						offsets));
 				assembler.add(new LlvmLoad(lhs, ptr));
 				return lhs;
 			}
@@ -722,22 +759,32 @@ public class Codegen extends VisitorAdapter{
 		if(sup.name.equals("%super")){
 			ClassNode cnew = (ClassNode)((LlvmPointer)sup.type).content;
 			LlvmRegister reg = new LlvmRegister(new LlvmPointer(cnew));
+			LinkedList<LlvmValue> offsets = new LinkedList<>();
+			LlvmValue off = new LlvmIntegerLiteral(0);
+			offsets.add(off);
+			offsets.add(off);
 			assembler.add(new LlvmGetElementPointer(reg, vthis,
-					new LlvmIntegerLiteral(0),
-					new LlvmIntegerLiteral(0)));
+					offsets));
 			return recursiveLookUpId(cnew, n, reg);
 		}
 		return null;
 	}
 
 	public LlvmValue visit(NewArray n){
-		LlvmValue size = n.size.accept(this);
-		LlvmValue rhs = new LlvmRegister(n.type.accept(this).type);
-		assembler.add(new LlvmMalloc(rhs,n.size.type.accept(this).type,size));
-		LlvmRegister lhs = new LlvmRegister(new LlvmPointer(LlvmPrimitiveType.I32));
-		assembler.add(new LlvmGetElementPointer(lhs, rhs, new LlvmIntegerLiteral (0)));
-		assembler.add(new LlvmStore(size, lhs));
-		return rhs; 
+		LinkedList<LlvmValue> offsets = new LinkedList<>();
+		LlvmValue s = n.size.accept(this);
+		LlvmValue off = new LlvmIntegerLiteral(0);
+		offsets.add(off);
+		LlvmValue t = n.type.accept(this);
+		LlvmValue st = n.size.type.accept(this);
+		
+		LlvmValue v1 = new LlvmRegister(t.type);
+		assembler.add(new LlvmMalloc(v1,st.type,s));
+		LlvmRegister v2 = new LlvmRegister(new LlvmPointer(LlvmPrimitiveType.I32));
+		assembler.add(new LlvmGetElementPointer(v2, v1, offsets));
+		assembler.add(new LlvmStore(s, v2));
+		
+		return v2; 
 	}
 
 	public LlvmValue visit(NewObject n){
@@ -745,15 +792,6 @@ public class Codegen extends VisitorAdapter{
 		LlvmRegister obj = new LlvmRegister(new LlvmPointer(classNode));
 		assembler.add(new LlvmMalloc(obj, classNode.classType, classNode.toString()));
 		return obj;
-	}
-
-	public LlvmValue visit(Not n){
-		System.out.println("ENTER NODE - Not");
-		LlvmValue v1 = n.exp.accept(this);
-		LlvmValue v2 = new LlvmBool(LlvmBool.TRUE);
-		LlvmRegister lhs = new LlvmRegister(LlvmPrimitiveType.I1);
-		assembler.add(new LlvmNot(lhs,LlvmPrimitiveType.I1,v1,v2));
-		return lhs;
 	}
 
 	public LlvmValue visit(Identifier n){
