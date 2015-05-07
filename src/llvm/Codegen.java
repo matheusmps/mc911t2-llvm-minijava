@@ -131,10 +131,6 @@ public class Codegen extends VisitorAdapter{
 	public String translate(Program p, Env env){	
 		codeGenerator = new Codegen();
 		
-		// Preenchendo a Tabela de Símbolos
-		// Quem quiser usar 'env', apenas comente essa linha
-		// codeGenerator.symTab.FillTabSymbol(p);
-		
 		codeGenerator.symTab = new SymTab(codeGenerator);
 		codeGenerator.symTab.FillTabSymbol(p);
 		codeGenerator.symTab.FillTabSymbol(p);
@@ -182,8 +178,6 @@ public class Codegen extends VisitorAdapter{
 
 	public LlvmValue visit(MainClass n){
 		System.out.println("ENTER NODE - Main Class");
-		
-//		assembler.add(new LlvmConstantDeclaration("%class." + n.className, "type " + new LinkedList<LlvmValue>()));
 		
 		// definicao do main 
 		assembler.add(new LlvmDefine("@main", LlvmPrimitiveType.I32, new LinkedList<LlvmValue>()));
@@ -252,12 +246,12 @@ public class Codegen extends VisitorAdapter{
 		return new LlvmIntegerLiteral(n.value);
 	};
 
-	// Todos os visit's que devem ser implementados
 	
 	// CLASS OPERATIONS
-	
 
 	public LlvmValue visit(ClassDeclSimple n){
+		System.out.println("ENTER NODE - ClassDeclSimple");
+
 		classEnv = symTab.classes.get(n.name.s);
 		for (util.List<syntaxtree.MethodDecl> var = n.methodList; var!=null; var=var.tail){
 			var.head.accept(this);
@@ -267,6 +261,8 @@ public class Codegen extends VisitorAdapter{
 	}
 
 	public LlvmValue visit(ClassDeclExtends n){
+		System.out.println("ENTER NODE - ClassDeclExtends");
+
 		classEnv = symTab.classes.get(n.name.s);
 		for (util.List<syntaxtree.MethodDecl> var = n.methodList; var!=null; var=var.tail){
 			var.head.accept(this);
@@ -276,6 +272,8 @@ public class Codegen extends VisitorAdapter{
 	}
 
 	public LlvmValue visit(VarDecl n){
+		System.out.println("ENTER NODE - Var Declaration");
+		
 		LlvmType type = n.type.accept(this).type;
 		if (type instanceof ClassNode)
 			type = new LlvmPointer(type);
@@ -286,25 +284,29 @@ public class Codegen extends VisitorAdapter{
 	}
 
 	public LlvmValue visit(MethodDecl n){
-		//Identifica o tipo do método
+		System.out.println("ENTER NODE - Method Declaration");
+		
 		LlvmValue type = n.returnType.accept(this);
-		//Cria lista de argumentos
 		List<LlvmValue> args = new ArrayList<LlvmValue>();
-		//Inicia novo mapa de símbolos para a classe
+
 		methodEnv.formals.clear();
 		methodEnv.vars.clear();
-		//Perpara a declaração do método, preenchendo o mapa de símbolos
+		
+		//this
 		args.add(new LlvmNamedValue("%this", new LlvmPointer(classEnv)));
 		methodEnv.formalTypes.add(new LlvmPointer(classEnv).toString());
-		for (util.List<syntaxtree.Formal> var = n.formals; var!=null; var=var.tail){
-			LlvmValue val = var.head.accept(this);
+		
+		util.List<Formal> vars = n.formals;
+		for (; vars != null; vars = vars.tail){
+			LlvmValue val = vars.head.accept(this);
 			args.add(val);
-			methodEnv.formals.put(var.head.name.toString(), val);
+			methodEnv.formals.put(vars.head.name.toString(), val);
 			methodEnv.formalTypes.add(val.type.toString());
 		}
 		assembler.add(new LlvmDefine("@__"+n.name.s+"_"+classEnv.name, type.type, args));
 		assembler.add(new LlvmLabel(new LlvmLabelValue("entry")));
-		//Cria cópias locais dos argumentos
+		
+		// params
 		boolean passed_this = false;
 		for (LlvmValue val : args){
 			if (passed_this){ // Pula o "this" do vetor
@@ -317,14 +319,16 @@ public class Codegen extends VisitorAdapter{
 			}
 			passed_this=true;
 		}
-		//Visita as declarações locais de variáveis preenchendo o mapa
-		for (util.List<syntaxtree.VarDecl> var = n.locals; var!=null; var=var.tail){
+		
+		for (util.List<VarDecl> var = n.locals; var!=null; var=var.tail){
 			methodEnv.vars.put(var.head.name.toString(), var.head.accept(this));
 		}
-		//Visita os statements
-		for (util.List<syntaxtree.Statement> stm = n.body; stm!=null; stm=stm.tail){
+		
+		for (util.List<Statement> stm = n.body; stm!=null; stm=stm.tail){
 			stm.head.accept(this);
 		}
+		
+		// Retorna o tipo adequado
 		LlvmValue typeReturnExp = n.returnExp.accept(this);
 		if(typeReturnExp.type != type.type){
 			LlvmRegister r = new LlvmRegister(type.type);
@@ -468,26 +472,21 @@ public class Codegen extends VisitorAdapter{
 		System.out.println("ENTER NODE - While");
 		
 		LlvmValue cond = n.condition.accept(this);
+
+		LlvmLabelValue loopWhile = new LlvmLabelValue("loopWhile" + n.line);
+		LlvmLabelValue outW = new LlvmLabelValue("outW" + n.line);
 		
-		LlvmLabelValue clean = null;
-		LlvmLabelValue w = new LlvmLabelValue("ifWhile" + n.line);
-		LlvmLabelValue d = new LlvmLabelValue("ifDo" + n.line);
-		LlvmLabelValue e = new LlvmLabelValue("ifEnd" + n.line);
-		
-		assembler.add(new LlvmBranch(clean, w, clean));
-		assembler.add(new LlvmLabel(w));
-		assembler.add(new LlvmBranch(cond, d, e));
-		assembler.add(new LlvmLabel(d));
-		
-  		n.body.accept(this);
-		assembler.add(new LlvmBranch(clean, w, clean));
-		assembler.add(new LlvmLabel(e));
+		assembler.add(new LlvmBranch(cond, loopWhile, outW));
+		assembler.add(new LlvmLabel(loopWhile));
+		n.body.accept(this);
+		cond = n.condition.accept(this);
+		assembler.add(new LlvmBranch(cond, loopWhile, outW));
+	
+		assembler.add(new LlvmLabel(outW));
 	
 		return null;
 	}
 
-	// TODO
-	
 	public LlvmValue visit(Block n){
 		System.out.println("ENTER NODE - Block");
 		
@@ -528,7 +527,6 @@ public class Codegen extends VisitorAdapter{
 			
 			if(var.name.equals(n.var.s)){
 				LlvmRegister reg = new LlvmRegister(new LlvmPointer(var.type));
-				//TODO tratar offset dependendo do tipo da variável
 				List<LlvmValue> offsets = new ArrayList<LlvmValue>();
 				LlvmValue off0 = new LlvmIntegerLiteral(0);
 				LlvmValue off1 = new LlvmIntegerLiteral(i);
@@ -643,11 +641,9 @@ public class Codegen extends VisitorAdapter{
 	}
 
 	public LlvmValue visit(Call n){
-		// Caputra objeto e classe do objeto que chama o método
 		LlvmValue obj = n.object.accept(this);
 		ClassNode objClass = (ClassNode)((LlvmPointer)obj.type).content;
 
-		// Define o tipo do retorno numa busca iterativa do método nas classes
 		MethodNode method = objClass.methods.get(n.method.s);
 		LlvmValue oldobj;
 		while(method == null){
@@ -663,12 +659,9 @@ public class Codegen extends VisitorAdapter{
 		}
 		LlvmRegister lhs = new LlvmRegister(method.type);
 
-		// Define o nome do método do nosso jeito
 		String fnName = "@__"+n.method.s+"_"+objClass.name;
 
-		// Monta a lista de argumentos
 		List<LlvmValue> args = new ArrayList<LlvmValue>();
-		// Verifica se é a classe do próprio argumento ou do pai que deve ser passada como argumento
 		args.add(obj);
 
 		for(util.List<syntaxtree.Exp> e = n.actuals; e != null; e = e.tail){
@@ -711,7 +704,6 @@ public class Codegen extends VisitorAdapter{
 	}
 
 	public LlvmValue visit(IdentifierExp n){
-		// Retorna LlvmValue do método caso o identificador esteja lá
 		if(methodEnv.formals.containsKey(n.name.s)){
 			LlvmValue val = methodEnv.formals.get(n.name.s);
 			LlvmValue lhs = new LlvmRegister(val.type);
@@ -727,7 +719,6 @@ public class Codegen extends VisitorAdapter{
 			lhs.type = ((LlvmPointer)lhs.type).content;
 			return lhs;
 		}
-		// Caso contrário, procura na lista de identificadores da classe
 		else{
 			LlvmNamedValue vthis = new LlvmNamedValue("%this", new LlvmPointer(classEnv));
 			return recursiveLookUpId(classEnv, n, vthis);
@@ -738,11 +729,9 @@ public class Codegen extends VisitorAdapter{
 		int i = -1;
 		for(LlvmNamedValue var : c.varList){
 			i++;
-			// Se acha variável na classe atual, encerra recursão
 			if(var.name.equals(n.name.s)){
 				LlvmRegister ptr = new LlvmRegister(new LlvmPointer(var.type));
 				LlvmRegister lhs = new LlvmRegister(var.type);
-				//TODO tratar offset dependendo do tipo da variável
 				LinkedList<LlvmValue> offsets = new LinkedList<>();
 				LlvmValue off0 = new LlvmIntegerLiteral(0);
 				LlvmValue off1 = new LlvmIntegerLiteral(i);
@@ -754,7 +743,6 @@ public class Codegen extends VisitorAdapter{
 				return lhs;
 			}
 		}
-		// Caso contrário, continua a procurar
 		LlvmNamedValue sup = classEnv.varList.get(0);
 		if(sup.name.equals("%super")){
 			ClassNode cnew = (ClassNode)((LlvmPointer)sup.type).content;
